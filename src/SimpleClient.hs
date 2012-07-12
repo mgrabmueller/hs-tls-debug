@@ -10,11 +10,14 @@ import qualified Data.ByteString.Lazy.Char8 as LC
 import Control.Exception
 import System.Environment
 import Prelude hiding (catch)
+import Control.Monad
+import System.Exit
 
 import Data.IORef
 
-validateCert = True
-debug = False
+validateCert = False
+sendClientCert = True
+debug = True
 
 ciphers :: [Cipher]
 ciphers =
@@ -36,13 +39,16 @@ runTLS params hostname portNumber f = do
 	_ <- f ctx
 	hClose dsth
 
-getDefaultParams sStorage session = defaultParamsClient
+getDefaultParams sStorage session certs = defaultParamsClient
 	{ pConnectVersion    = TLS10
 	, pAllowedVersions   = [TLS10,TLS11,TLS12]
 	, pCiphers           = ciphers
-	, pCertificates      = []
+	, pCertificates      = certs
 	, pLogging           = logging
 	, onCertificatesRecv = crecv
+        , pClientCertParamsClient = Just (ClientCertParamsClient {
+                                             onCertificateRequest = creq
+                                             })
 	, onSessionEstablished = \s d -> writeIORef sStorage (s,d)
 	, sessionResumeWith  = session
 	}
@@ -52,14 +58,24 @@ getDefaultParams sStorage session = defaultParamsClient
 			, loggingPacketRecv = putStrLn . ("debug: << " ++)
 			}
 		crecv = if validateCert then certificateVerifyChain else (\_ -> return CertificateUsageAccept)
+                creq = if sendClientCert then (\ _ -> return certs) else (\ _ -> return [])
 
 
 main = do
 	sStorage <- newIORef undefined
 	args     <- getArgs
+        when (length args /= 2 && length args /= 4) $ do
+          putStrLn $ "usage: tls-simpleclient HOST PORT [CERTIFICATEFILE KEYFILE]"
+          exitWith (ExitFailure 1)
 	let hostname = args !! 0
 	let port = read (args !! 1) :: Int
-	runTLS (getDefaultParams sStorage Nothing) hostname (fromIntegral port) $ \ctx -> do
+        certs <- if sendClientCert && length args == 4
+                 then do
+                   cert    <- fileReadCertificate $ args !! 2
+                   pk      <- fileReadPrivateKey $ args !! 3
+                   return [(cert, Just pk)]
+                 else return []
+	runTLS (getDefaultParams sStorage Nothing certs) hostname (fromIntegral port) $ \ctx -> do
 		handshake ctx
 		sendData ctx $ LC.pack "GET / HTTP/1.0\r\n\r\n"
 		d <- recvData' ctx

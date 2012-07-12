@@ -86,7 +86,6 @@ clientProcess certs handle dsthandle dbg sessionStorage _ = do
 		{ pAllowedVersions = [SSL3,TLS10,TLS11,TLS12]
 		, pCiphers         = ciphers
 		, pCertificates    = certs
-		, pWantClientCert  = False
 		, pLogging         = logging
 		}
 	let serverState' = case sessionStorage of
