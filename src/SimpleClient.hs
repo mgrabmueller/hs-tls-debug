@@ -46,19 +46,17 @@ instance SessionManager SessionRef where
     sessionResume (SessionRef ref) sid = readIORef ref >>= \(s,d) -> if s == sid then return (Just d) else return Nothing
     sessionInvalidate _ _ = return ()
 
-getDefaultParams sStorage session certs = updateClientParams setCParams $ setSessionManager (SessionRef sStorage) $ defaultParams
+getDefaultParams sStorage session certs = updateClientParams setCParams $ setSessionManager (SessionRef sStorage) $ defaultParamsClient
 	{ pConnectVersion    = TLS10
 	, pAllowedVersions   = [TLS10,TLS11,TLS12]
 	, pCiphers           = ciphers
 	, pCertificates      = certs
 	, pLogging           = logging
 	, onCertificatesRecv = crecv
-        , pClientCertParamsClient = Just (ClientCertParamsClient {
-                                             onCertificateRequest = creq
-                                             })
 	}
 	where
-		setCParams cparams = cparams { clientWantSessionResume = session }
+		setCParams cparams = cparams { clientWantSessionResume = session,
+                                               onCertificateRequest = creq }
 		logging = if not debug then defaultLogging else defaultLogging
 			{ loggingPacketSent = putStrLn . ("debug: >> " ++)
 			, loggingPacketRecv = putStrLn . ("debug: << " ++)
